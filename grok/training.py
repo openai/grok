@@ -343,7 +343,7 @@ class TrainableTransformer(LightningModule):
             )
         """
         grad_vec = None
-        if not grads:
+        if grads:
             loss.backward()
             for p in self.parameters():
                 p.grad.data.div_(torch.size(batch)[0])
