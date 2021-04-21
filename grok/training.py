@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import copy
 import json
 import logging
@@ -29,6 +30,7 @@ from grok.data import (
     ArithmeticIterator,
 )
 from grok.transformer import Transformer
+from grok.measure import get_sharpness
 
 DEFAULT_LOG_DIR = "logs"
 
@@ -264,7 +266,12 @@ class TrainableTransformer(LightningModule):
         return accuracy
 
     def _step(
-        self, batch: Dict, batch_idx: int, train: bool = True, reduction: str = "mean"
+        self,
+        batch: Dict,
+        batch_idx: int,
+        train: bool = True,
+        reduction: str = "mean",
+        grads: bool = False,
     ) -> Tuple[Tensor, Tensor, float, Tensor, Tensor, Tensor, Tensor]:
         """
         Performs one forward pass on a training or validation batch
@@ -335,7 +342,18 @@ class TrainableTransformer(LightningModule):
                 0,
             )
         """
+        grad_vec = None
+        if not grads:
+            loss.backward()
+            for p in self.parameters():
+                p.grad.data.div_(torch.size(batch)[0])
+                if grad_vec is None:
+                    grad_vec = p.grad.data.view(-1)
+                else:
+                    grad_vec = torch.cat((grad_vec, p.grad.data.view(-1)))
+            return loss, grad_vec
         return loss, acc, coeff, x_lhs, y_hat_rhs, attentions, values
+
 
     def _save_inputs(self, outputs: Dict, ds: str) -> None:
         """
@@ -733,6 +751,131 @@ def train(hparams: Namespace) -> None:
         json.dump(bounds, fh)
     """
     return hparams.logdir
+
+
+def compute_sharpness(hparams: Namespace) -> None:
+    """
+    This is the main trainer_method. This sets up and runs experiment with
+    the defined hyperparameters
+
+    :param hparams: An argparse.Namespace with all of the relevant hyperparameters
+    """
+
+    # Process the args
+    if hparams.logdir is None:
+        hparams.logdir = os.environ.get("RCALL_LOGDIR", ".")
+    hparams.logdir = os.path.abspath(hparams.logdir)
+
+    # Make sure d_model, heads, and d_key are compatible
+    assert (
+        hparams.d_model % hparams.n_heads == 0
+    ), "n_heads=%s does not evenly divide d_model=%s" % (
+        hparams.n_heads,
+        hparams.d_model,
+    )
+    hparams.d_key = hparams.d_model / hparams.n_heads
+
+    # Set up the RNGs for repeatability
+    if hparams.random_seed != -1:
+        torch.manual_seed(hparams.random_seed)
+        torch.cuda.manual_seed(hparams.random_seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+    checkpoint_path = hparams.logdir + "/checkpoints"
+    os.makedirs(checkpoint_path, exist_ok=True)
+    hparams.checkpoint_path = checkpoint_path
+
+    # Create the model
+    model = TrainableTransformer(hparams).float()
+
+    torch.save(model, os.path.join(checkpoint_path, "init.pt"))
+
+    logger = CSVLogger(hparams.logdir)
+
+    # checkpointer = ModelCheckpoint(
+    #     filepath=checkpoint_path,
+    #     monitor="save_ckpt",
+    #     mode="max",
+    #     save_top_k=len(hparams.ckpt_epochs),
+    #     verbose=False,
+    # )
+
+    trainer_args = {
+        "max_steps": hparams.max_steps,
+        "min_steps": hparams.max_steps,
+        "max_epochs": int(1e8),
+        "val_check_interval": 1,
+        "profiler": False,
+        # "checkpoint_callback": checkpointer,
+        "logger": logger,
+        "log_every_n_steps": 1,
+        "flush_logs_every_n_steps": 1000,
+    }
+    if torch.cuda.is_available() and hparams.gpu >= 0:
+        trainer_args["gpus"] = [hparams.gpu]
+
+    trainer = Trainer(**trainer_args)
+
+    ckpt = "/Users/vedant/files/src/openai/grok/ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-0_WU-10_LR-1p0.ckpt"
+    ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-0_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-10_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-11_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-12_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-13_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-14_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-15_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-16_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-17_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-18_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-19_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-1_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-2_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-3_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-4_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-5_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-6_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-7_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-8_WU-10_LR-1p0.ckpt"
+    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-9_WU-10_LR-1p0.ckpt"
+
+    # model = torch.load(ckpt)
+    # model.load_state_dict(torch.load(ckpt))
+
+    checkpoint = torch.load(ckpt)
+    # print(dir(checkpoint), type(checkpoint), "Ckpt")
+    # for k, v in checkpoint.items():
+    #     print(k)
+    # print(checkpoint["hyper_parameters"])
+
+    hps = checkpoint["hyper_parameters"]
+    hps = argparse.Namespace(**hps)
+    model = TrainableTransformer(hps).float()
+    model.load_state_dict(checkpoint["state_dict"])
+
+    get_sharpness(model.train_dataloader(), model)
+
+    # trainer.fit(model=model)  # type: ignore
+    """
+    margin = np.percentile(model.margin.detach().cpu().numpy(), 5)
+    device = transformer.embedding.weight.device
+    measures, bounds = metrics.calculate(
+        transformer,
+        transformer_init.to(device),
+        device,
+        dataset_size,
+        margin,
+        input_dim=hparams.d_model,
+    )
+
+    measures_file = os.path.join(logger.log_dir, "measures.json")
+    bounds_file = os.path.join(logger.log_dir, "bounds.json")
+    with open(measures_file, "w") as fh:
+        json.dump(measures, fh)
+    with open(bounds_file, "w") as fh:
+        json.dump(bounds, fh)
+    """
+    # return hparams.logdir
 
 
 def add_args(parser=None) -> Namespace:

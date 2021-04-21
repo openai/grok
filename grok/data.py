@@ -24,12 +24,12 @@ VALID_OPERATORS = {
     "/": "division",
     "**2+": "squarepoly",
     "**3+": "cubepoly",
-    "x**2+y**2_mod_97": "quad1",
-    "x**2+y**2+x*y_mod_97": "quad2",
-    "x**2+y**2+x*y+x_mod_97": "quad3",
+    # "x**2+y**2_mod_97": "quad1",
+    # "x**2+y**2+x*y_mod_97": "quad2",
+    # "x**2+y**2+x*y+x_mod_97": "quad3",
     "x**3+x*y_mod_97": "cube1",
     "x**3+x*y**2+y_mod_97": "cube2",
-    "(x._value//y)if(y._value%2==1)else(x-y)_mod_97": "mix1",
+    # "(x._value//y)if(y._value%2==1)else(x-y)_mod_97": "mix1",
     "s5": "s5",
     "s5conj": "s5conj",
     "s5aba": "s5aba",
@@ -249,6 +249,9 @@ class ArithmeticDataset:
             operands = operands or NUMS
             tuples = itertools.product(operands, repeat=2)
 
+        # if operator == "s5":
+        #     print("elems", list(elems))
+        #     print("tuples", list(tuples))
         eqs = []
         for a, b in tuples:
             if operator == "/":
@@ -281,12 +284,16 @@ class ArithmeticDataset:
                 c = eval(f"({a} {operator} {b}) % {MODULUS}")
 
             # Reverse order of digits in numbers so generation is reasonable
-            a = "".join(list(reversed(str(a))))
-            b = "".join(list(reversed(str(b))))
-            c = "".join(list(reversed(str(c))))
+            a = "".join(list(reversed(render(a))))
+            b = "".join(list(reversed(render(b))))
+            c = "".join(list(reversed(render(c))))
+            # if operator == "s5":
+            #     print("a, b, c", a, b, c)
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             eqs.append(eq)
 
+        # if operator == "s5":
+        #     print("eqs", eqs)
         return eqs
 
     # @staticmethod
