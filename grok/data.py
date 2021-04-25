@@ -3,7 +3,6 @@ import math
 import os
 import sys
 import random
-import re
 
 import torch
 from torch import Tensor, LongTensor
@@ -39,21 +38,12 @@ VALID_OPERATORS = {
     "reverse": "reverse",
     "copy": "copy",
 }
-BOS_TOKEN = "<|bos|>"
 EOS_TOKEN = "<|eos|>"
 EQ_TOKEN = "="
-# NUMS = list(range(MODULUS))
-DIGITS = list(range(10))
-NUM_DIGITS = 2
-MODULUS = 10 ** (NUM_DIGITS + NUM_DIGITS - 1)
-
-NUMS = []
-if NUM_DIGITS > 1:
-    NUMS += list(range(10 ** (NUM_DIGITS - 1), 10 ** NUM_DIGITS))
+MODULUS = 97
+NUMS = list(range(MODULUS))
 
 DEFAULT_DATA_DIR = "data"
-
-INT_RE = re.compile(r"^[+-]?[0-9]+$")
 
 
 def render(operand, join_str=""):
@@ -88,19 +78,8 @@ class ArithmeticTokenizer:
 
         self.stoi: Dict[str, int] = dict([(s, i) for i, s in enumerate(self.itos)])
 
-        self.pad_idx = self.stoi[EOS_TOKEN]
-
-    def _encode(self, tokens: List[str]) -> Tensor:
-        return LongTensor([self.stoi[t] for t in tokens])
-
-    def _tokenize(self, s: str) -> List[str]:
-        tokens = []
-        for t in s.split():
-            if INT_RE.match(t):
-                tokens.extend(list(t))
-            else:
-                tokens.append(t)
-        return tokens
+    def _encode(self, s: str) -> Tensor:
+        return LongTensor([self.stoi[t] for t in s.split(" ")])
 
     def encode(self, obj: Union[str, List]) -> Tensor:
         """
@@ -111,22 +90,9 @@ class ArithmeticTokenizer:
         :returns: a tensor of the token ids
         """
         if isinstance(obj, str):
-            return self._encode(self._tokenize(obj))
+            return self._encode(obj)
         elif isinstance(obj, list):
-            try:
-                tokenized = [self._tokenize(s) for s in obj]
-                encoded = [self._encode(self._tokenize(s)) for s in obj]
-                max_len = 2 ** 6
-                for i, ex in enumerate(encoded):
-                    encoded[i] = torch.nn.functional.pad(
-                        ex, (0, max_len - len(ex)), "constant", self.pad_idx
-                    )
-
-                return torch.stack(encoded, dim=0)
-            except Exception as err:
-                print(tokenized, flush=True)
-                raise err
-
+            return torch.stack([self._encode(s) for s in obj], dim=0)
         else:
             raise NotImplementedError
 
@@ -158,9 +124,8 @@ class ArithmeticTokenizer:
     @classmethod
     def get_tokens(cls):
         tokens = (
-            [BOS_TOKEN, EOS_TOKEN, EQ_TOKEN]
+            [EOS_TOKEN, EQ_TOKEN]
             + list(sorted(list(VALID_OPERATORS.keys())))
-            + list(map(render, DIGITS))
             + list(map(render, NUMS))
             + list(map(render, itertools.permutations(range(5))))  # s5
         )
@@ -279,11 +244,6 @@ class ArithmeticDataset:
                 c = function(a, b)
             else:
                 c = eval(f"({a} {operator} {b}) % {MODULUS}")
-
-            # Reverse order of digits in numbers so generation is reasonable
-            a = "".join(list(reversed(str(a))))
-            b = "".join(list(reversed(str(b))))
-            c = "".join(list(reversed(str(c))))
             eq = " ".join(map(render, [a, operator, b, "=", c]))
             eqs.append(eq)
 
@@ -389,7 +349,7 @@ class ArithmeticDataset:
             for i in range(noise_level):
                 data[i] = data[i].split(" = ")[0] + " = " + random_answers[i]
 
-        data = [BOS_TOKEN + " " + eq + " " + EOS_TOKEN for eq in data]
+        data = [EOS_TOKEN + " " + eq + " " + EOS_TOKEN for eq in data]
 
         return data
 

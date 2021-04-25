@@ -499,7 +499,6 @@ class TrainableTransformer(LightningModule):
             }
             for k, v in logs.items():
                 self.log(k, v)
-            return logs
 
     def validation_step(self, batch, batch_idx):
         """
