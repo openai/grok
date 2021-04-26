@@ -4,4 +4,3 @@
 pip install -e .
 ./scripts/train.py
 ```
-

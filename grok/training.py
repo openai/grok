@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import sys
+import pickle
 from argparse import ArgumentParser, Namespace
 from functools import reduce
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -346,7 +347,7 @@ class TrainableTransformer(LightningModule):
         if grads:
             loss.backward()
             for p in self.parameters():
-                p.grad.data.div_(torch.size(batch)[0])
+                p.grad.data.div_(batch["text"].shape[0])
                 if grad_vec is None:
                     grad_vec = p.grad.data.view(-1)
                 else:
@@ -517,7 +518,6 @@ class TrainableTransformer(LightningModule):
             }
             for k, v in logs.items():
                 self.log(k, v)
-            return logs
 
     def validation_step(self, batch, batch_idx):
         """
@@ -753,9 +753,9 @@ def train(hparams: Namespace) -> None:
     return hparams.logdir
 
 
-def compute_sharpness(hparams: Namespace) -> None:
+def compute_sharpness(hparams: Namespace, ckpts) -> None:
     """
-    This is the main trainer_method. This sets up and runs experiment with
+    This is the compute_sharpness method. This loads a series of checkpoints in
     the defined hyperparameters
 
     :param hparams: An argparse.Namespace with all of the relevant hyperparameters
@@ -793,13 +793,6 @@ def compute_sharpness(hparams: Namespace) -> None:
 
     logger = CSVLogger(hparams.logdir)
 
-    # checkpointer = ModelCheckpoint(
-    #     filepath=checkpoint_path,
-    #     monitor="save_ckpt",
-    #     mode="max",
-    #     save_top_k=len(hparams.ckpt_epochs),
-    #     verbose=False,
-    # )
 
     trainer_args = {
         "max_steps": hparams.max_steps,
@@ -817,65 +810,26 @@ def compute_sharpness(hparams: Namespace) -> None:
 
     trainer = Trainer(**trainer_args)
 
-    ckpt = "/Users/vedant/files/src/openai/grok/ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-0_WU-10_LR-1p0.ckpt"
-    ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-0_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-10_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-11_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-12_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-13_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-14_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-15_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-16_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-17_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-18_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-19_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-1_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-2_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-3_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-4_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-5_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-6_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-7_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-8_WU-10_LR-1p0.ckpt"
-    # ckpt = "./ckpts/L-2_H-4_D-128_T-70_DROP-0_SD-9_WU-10_LR-1p0.ckpt"
+    for ckpt in ckpts:
+        print(f"Loading checkpoint {ckpt}")
+        # model = torch.load(ckpt)
+        # model.load_state_dict(torch.load(ckpt))
 
-    # model = torch.load(ckpt)
-    # model.load_state_dict(torch.load(ckpt))
+        checkpoint = torch.load(ckpt)
+        # print(dir(checkpoint), type(checkpoint), "Ckpt")
+        # for k, v in checkpoint.items():
+        #     print(k)
+        # print(checkpoint["hyper_parameters"])
 
-    checkpoint = torch.load(ckpt)
-    # print(dir(checkpoint), type(checkpoint), "Ckpt")
-    # for k, v in checkpoint.items():
-    #     print(k)
-    # print(checkpoint["hyper_parameters"])
+        hps = checkpoint["hyper_parameters"]
+        hps = argparse.Namespace(**hps)
+        model = TrainableTransformer(hps).float()
+        model.load_state_dict(checkpoint["state_dict"])
 
-    hps = checkpoint["hyper_parameters"]
-    hps = argparse.Namespace(**hps)
-    model = TrainableTransformer(hps).float()
-    model.load_state_dict(checkpoint["state_dict"])
-
-    get_sharpness(model.train_dataloader(), model)
-
-    # trainer.fit(model=model)  # type: ignore
-    """
-    margin = np.percentile(model.margin.detach().cpu().numpy(), 5)
-    device = transformer.embedding.weight.device
-    measures, bounds = metrics.calculate(
-        transformer,
-        transformer_init.to(device),
-        device,
-        dataset_size,
-        margin,
-        input_dim=hparams.d_model,
-    )
-
-    measures_file = os.path.join(logger.log_dir, "measures.json")
-    bounds_file = os.path.join(logger.log_dir, "bounds.json")
-    with open(measures_file, "w") as fh:
-        json.dump(measures, fh)
-    with open(bounds_file, "w") as fh:
-        json.dump(bounds, fh)
-    """
-    # return hparams.logdir
+        phi = get_sharpness(model.train_dataloader(), model)
+        results = {}
+        results[ckpt] = phi
+        pickle.dump(results, open(f"results/results_SD-{i}.pkl", "wb"))
 
 
 def add_args(parser=None) -> Namespace:
