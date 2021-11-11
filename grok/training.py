@@ -706,7 +706,7 @@ def train(hparams: Namespace) -> None:
 
     torch.save(model, os.path.join(checkpoint_path, "init.pt"))
     logger = CSVLogger(hparams.logdir)
-    logger = WandbLogger("grokking", hparams.logdir, config=hparams.__dict__)
+    logger = WandbLogger(hparams.logdir, config=hparams.__dict__)
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
