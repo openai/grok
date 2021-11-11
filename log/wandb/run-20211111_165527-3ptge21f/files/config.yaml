@@ -1,0 +1,327 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.0
+    framework: lightning
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    m:
+    - 1: trainer/global_step
+      6:
+      - 3
+    - 1: train_loss
+      5: 1
+      6:
+      - 1
+    - 1: train_accuracy
+      5: 1
+      6:
+      - 1
+    - 1: train_perplexity
+      5: 1
+      6:
+      - 1
+    - 1: learning_rate
+      5: 1
+      6:
+      - 1
+    - 1: len_train_ds
+      5: 1
+      6:
+      - 1
+    - 1: len_val_ds
+      5: 1
+      6:
+      - 1
+    - 1: batches_per_epoch
+      5: 1
+      6:
+      - 1
+    - 1: time_per_epoch
+      5: 1
+      6:
+      - 1
+    - 1: fwd_time_in_epoch
+      5: 1
+      6:
+      - 1
+    - 1: epoch
+      5: 1
+      6:
+      - 1
+    - 1: val_loss
+      5: 1
+      6:
+      - 1
+    - 1: val_accuracy
+      5: 1
+      6:
+      - 1
+    - 1: val_perplexity
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.embedding\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.0\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.0\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.0\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.1\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.1\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.1\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.2\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.2\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.2\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.3\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.3\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.attn_heads\.3\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn\.Wo\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn_norm\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.self_attn_norm\.bias
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.ffn\.ffn\.0\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.ffn\.ffn\.2\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.ffn_norm\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.0\.ffn_norm\.bias
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.0\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.0\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.0\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.1\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.1\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.1\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.2\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.2\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.2\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.3\.Wq\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.3\.Wk\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.attn_heads\.3\.Wv\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn\.Wo\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn_norm\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.self_attn_norm\.bias
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.ffn\.ffn\.0\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.ffn\.ffn\.2\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.ffn_norm\.weight
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.decoder\.blocks\.1\.ffn_norm\.bias
+      5: 1
+      6:
+      - 1
+    - 1: paramnorm_transformer\.linear\.weight
+      5: 1
+      6:
+      - 1
+    - 1: full_train_loss
+      5: 1
+      6:
+      - 1
+    - 1: full_train_acc
+      5: 1
+      6:
+      - 1
+    python_version: 3.9.6
+    start_time: 1636629927
+    t:
+      1:
+      - 1
+      - 9
+      4: 3.9.6
+      5: 0.12.0
+      8:
+      - 5
+anneal_lr:
+  desc: null
+  value: false
+anneal_lr_steps:
+  desc: null
+  value: 100000
+batchsize:
+  desc: null
+  value: 0
+checkpoint_path:
+  desc: null
+  value: /home/alpha91/research/grok/log/checkpoints
+d_key:
+  desc: null
+  value: 32.0
+d_model:
+  desc: null
+  value: 128
+datadir:
+  desc: null
+  value: /home/alpha91/research/grok/data
+dropout:
+  desc: null
+  value: 0.0
+gpu:
+  desc: null
+  value: 0
+logdir:
+  desc: null
+  value: /home/alpha91/research/grok/log
+math_operator:
+  desc: null
+  value: +
+max_context_len:
+  desc: null
+  value: 50
+max_epochs:
+  desc: null
+  value: None
+max_lr:
+  desc: null
+  value: 0.001
+max_steps:
+  desc: null
+  value: 100000
+n_heads:
+  desc: null
+  value: 4
+n_layers:
+  desc: null
+  value: 2
+noise_factor:
+  desc: null
+  value: 0
+non_linearity:
+  desc: null
+  value: relu
+operand_length:
+  desc: null
+  value: None
+random_seed:
+  desc: null
+  value: -1
+save_activations:
+  desc: null
+  value: false
+save_outputs:
+  desc: null
+  value: false
+train_data_pct:
+  desc: null
+  value: 50
+warmup_steps:
+  desc: null
+  value: 10
+weight_decay:
+  desc: null
+  value: 0
+weight_decay_kind:
+  desc: null
+  value: to_zero
+weight_noise:
+  desc: null
+  value: 0.0

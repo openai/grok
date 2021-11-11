@@ -112,8 +112,13 @@ class ArithmeticTokenizer:
         else:
             l = ""
             r = ""
-        tokens = [l + self.itos[i] + r for i in indices]
-        return " ".join(tokens)
+        if len(indices.shape) == 2:
+            tokens_all = []
+            for ix in indices:
+                tokens = [l + self.itos[i] + r for i in ix]
+                tokens_all.append(" ".join(tokens))
+            return tokens_all
+        return "".join([l + self.itos[i] + r for i in indices])
 
     def __len__(self) -> int:
         """

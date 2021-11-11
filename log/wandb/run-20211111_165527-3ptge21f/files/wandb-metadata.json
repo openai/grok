@@ -1,0 +1,24 @@
+{
+    "os": "Linux-5.13.0-7620-generic-x86_64-with-glibc2.33",
+    "python": "3.9.6",
+    "heartbeatAt": "2021-11-11T11:25:29.801785",
+    "startedAt": "2021-11-11T11:25:27.324165",
+    "docker": null,
+    "gpu": "NVIDIA GeForce 940MX",
+    "gpu_count": 1,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/alpha91/research/grok/./scripts/train.py",
+    "codePath": "scripts/train.py",
+    "git": {
+        "remote": "https://github.com/openai/grok.git",
+        "commit": "43efed280af24a8837b05fd9c97a3d14f295666f"
+    },
+    "email": "arpitvaghela9210@gmail.com",
+    "root": "/home/alpha91/research/grok",
+    "host": "zp2",
+    "username": "arpit",
+    "executable": "/home/alpha91/miniconda3/envs/syft/bin/python"
+}

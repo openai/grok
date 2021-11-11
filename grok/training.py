@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
-from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.loggers import WandbLogger, CSVLogger
 from torch import Tensor
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -47,7 +47,7 @@ class TrainableTransformer(LightningModule):
                         self.add_model_specific_args().
         """
         super().__init__()
-        self.hparams = hparams  # type: ignore
+        self.save_hyperparameters(hparams)
         self.prepare_data()
 
         self.transformer = Transformer(
@@ -99,7 +99,7 @@ class TrainableTransformer(LightningModule):
             help="for list operations, the length of the lists",
         )
 
-        parser.add_argument("--train_data_pct", type=float, default=5)
+        parser.add_argument("--train_data_pct", type=float, default=50)
         parser.add_argument("--warmup_steps", type=int, default=10)
         parser.add_argument("--anneal_lr_steps", type=int, default=100000)
         parser.add_argument("--anneal_lr", dest="anneal_lr", action="store_true")
@@ -355,7 +355,6 @@ class TrainableTransformer(LightningModule):
             return loss, grad_vec
         return loss, acc, coeff, x_lhs, y_hat_rhs, attentions, values
 
-
     def _save_inputs(self, outputs: Dict, ds: str) -> None:
         """
         Saves the input equations to disk for analysis later
@@ -558,7 +557,10 @@ class TrainableTransformer(LightningModule):
         :param batch_idx: which batch this is in the epoch.
         :returns: a dict with val_loss, val_accuracy
         """
-        validation_is_real = len(outputs[0]) != 0
+        if len(outputs) > 0:
+            validation_is_real = len(outputs[0]) != 0
+        else:
+            validation_is_real = False
 
         if validation_is_real:
             self.next_epoch_to_eval = max(
@@ -703,9 +705,8 @@ def train(hparams: Namespace) -> None:
     model = TrainableTransformer(hparams).float()
 
     torch.save(model, os.path.join(checkpoint_path, "init.pt"))
-
     logger = CSVLogger(hparams.logdir)
-
+    logger = WandbLogger("grokking", hparams.logdir, config=hparams.__dict__)
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
@@ -792,7 +793,6 @@ def compute_sharpness(hparams: Namespace, ckpts) -> None:
     torch.save(model, os.path.join(checkpoint_path, "init.pt"))
 
     logger = CSVLogger(hparams.logdir)
-
 
     trainer_args = {
         "max_steps": hparams.max_steps,
