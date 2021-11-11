@@ -706,7 +706,7 @@ def train(hparams: Namespace) -> None:
 
     torch.save(model, os.path.join(checkpoint_path, "init.pt"))
     logger = CSVLogger(hparams.logdir)
-    logger = WandbLogger(hparams.logdir, config=hparams.__dict__)
+    logger = WandbLogger(hparams.logdir, project="grok", config=hparams.__dict__)
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
@@ -843,7 +843,7 @@ def add_args(parser=None) -> Namespace:
     parser.add_argument("--random_seed", type=int, default=-1)
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--max_epochs", type=int, default=None)
-    parser.add_argument("--max_steps", type=int, default=100000)
+    parser.add_argument("--max_steps", type=int, default=1000000)
     # parser.add_argument("--checkpoint_period", type=int, default=1)
     parser = TrainableTransformer.add_model_specific_args(parser)
     return parser
