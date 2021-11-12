@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+from hashlib import new
 import json
 import logging
 import math
@@ -14,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import time
 
 import numpy as np
+import pytorch_lightning
+from pytorch_lightning.core.mixins import hparams_mixin
 import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule, Trainer
@@ -21,6 +24,7 @@ from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 from torch import Tensor
 from torch.optim.lr_scheduler import LambdaLR
+from grok import transformer
 
 import grok.metrics as metrics
 from grok.data import (
@@ -60,7 +64,6 @@ class TrainableTransformer(LightningModule):
             hparams.non_linearity,
             weight_noise=self.hparams.weight_noise,
         )
-
         self.margin = torch.Tensor([0])
         self.next_epoch_to_eval = -1
         self.next_train_epoch_to_log = 0
@@ -83,7 +86,6 @@ class TrainableTransformer(LightningModule):
             default=0,
             help="-1 -> entire dataset, 0 -> auto-calculate, 0<N<1 -> fraction of dataset, N>1 -> N",
         )
-
         parser.add_argument("--n_layers", type=int, default=2)
         parser.add_argument("--n_heads", type=int, default=4)
         parser.add_argument("--d_model", type=int, default=128)
@@ -129,6 +131,71 @@ class TrainableTransformer(LightningModule):
         )
 
         return parser
+
+    def expand_model(
+        self,
+        add_dmodel: int,
+        exp_method: str = "random",
+    ) -> None:
+        """Expand Transformer dmodel to dmodel + add_dmodel.
+
+        Args:
+            parent_net:(grok.transformer.Transformer) The parent model to expand from.
+            add_dmodel:(int) increase in the size of d_model.
+            exp_method:(str) [duplicate | random | zero] Method used to initialize new parameter.
+        """
+        new_d_model = self.d_model + add_dmodel
+        print(f"\nExpanding to size {new_d_model}")
+        self.log("d_model", new_d_model)
+        teacher_model = self.transformer
+        params1 = teacher_model.state_dict()
+        student_model = type(teacher_model)(
+            n_layers=teacher_model.n_layers,
+            n_heads=teacher_model.n_heads,
+            d_model=new_d_model,
+        )
+        params2 = student_model.state_dict()
+
+        assert exp_method in [
+            "duplicate",
+            "random",
+            "zero",
+        ], "Invalid expansion method."
+        params_new = {}
+        for k in params2:
+            if k == "self_attn_mask":
+                params_new.update({k: params2[k].clone()})
+
+            elif params2[k].shape == params1[k].shape:
+                params_new.update({k: params1[k].clone()})
+            else:
+                new_shape = params2[k].shape
+                old_shape = params1[k].shape
+                w_ = params1[k].clone()
+                for dim in range(len(new_shape)):
+                    # m is the size  to concat in dimension `dim``
+                    m = new_shape[dim] - old_shape[dim]
+                    if exp_method == "duplicate":
+                        idx = torch.tensor(
+                            np.random.choice(range(w_.shape[dim]), size=m, replace=True)
+                        )
+                        v_ = torch.index_select(w_, dim, idx)
+                        w_ = torch.cat((w_, v_), dim=dim)
+
+                    elif exp_method == "random":
+                        shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
+                        v_ = torch.randn(shape_of_exta)
+                        w_ = torch.cat((w_, v_), dim=dim)
+
+                    elif exp_method == "zero":
+                        m = new_shape[dim] - old_shape[dim]
+                        shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
+                        v_ = torch.zeros(shape_of_exta)
+                        w_ = torch.cat((w_, v_), dim=dim)
+
+                params_new.update({k: w_})
+        student_model.load_state_dict(params_new)
+        self.transformer = student_model.float()
 
     def prepare_data(self) -> None:
         """
@@ -668,6 +735,30 @@ class TrainableTransformer(LightningModule):
         return self.transformer(*args, **kwargs)
 
 
+class ExpandModelCallback(pytorch_lightning.callbacks.Callback):
+    def __init__(self, expand_size: int, expand_count: float, expand_method: str):
+        super().__init__()
+        self.expand_size = expand_size
+        self.expand_count = expand_count
+        self.expand_method = expand_method
+
+    def on_epoch_end(
+        self, trainer: pytorch_lightning.Trainer, pl_module: TrainableTransformer
+    ):
+        N = int(trainer.max_epochs // (self.expand_count) + 1)
+        current_epoch = pl_module.current_epoch
+        self.log("d_model", pl_module.transformer.d_model)
+        if (
+            current_epoch > 0
+            and current_epoch
+            < min(
+                trainer.max_epochs * 0.05, 250
+            )  # don't expand model in last 5% of epochs
+            and current_epoch % N == 0
+        ):
+            pl_module.expand_model(self.expand_size, exp_method=self.expand_method)
+
+
 def train(hparams: Namespace) -> None:
     """
     This is the main trainer_method. This sets up and runs experiment with
@@ -705,8 +796,8 @@ def train(hparams: Namespace) -> None:
     model = TrainableTransformer(hparams).float()
 
     torch.save(model, os.path.join(checkpoint_path, "init.pt"))
-    logger = CSVLogger(hparams.logdir)
-    logger = WandbLogger(hparams.logdir, project="grok", config=hparams.__dict__)
+    # logger = CSVLogger(hparams.logdir)
+    logger = WandbLogger(project="grok", config=hparams.__dict__)
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
@@ -714,7 +805,6 @@ def train(hparams: Namespace) -> None:
     #     save_top_k=len(hparams.ckpt_epochs),
     #     verbose=False,
     # )
-
     trainer_args = {
         "max_steps": hparams.max_steps,
         "min_steps": hparams.max_steps,
@@ -726,6 +816,15 @@ def train(hparams: Namespace) -> None:
         "log_every_n_steps": 1,
         "flush_logs_every_n_steps": 1000,
     }
+    # add expand_callback if expand size > 0
+    if hparams.expand_size > 0:
+        expand_callback = ExpandModelCallback(
+            expand_size=hparams.expand_size,
+            expand_count=hparams.expand_count,
+            expand_method=hparams.expand_method,
+        )
+        trainer_args.update({"callbacks": [expand_callback]})
+
     if torch.cuda.is_available() and hparams.gpu >= 0:
         trainer_args["gpus"] = [hparams.gpu]
 
@@ -844,6 +943,10 @@ def add_args(parser=None) -> Namespace:
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--max_epochs", type=int, default=None)
     parser.add_argument("--max_steps", type=int, default=1000000)
+    parser.add_argument("--expand_size", type=int, default=-1)
+    parser.add_argument("--expand_count", type=int, default=8)
+    parser.add_argument("--expand_method", type=str, default="duplicate")
+
     # parser.add_argument("--checkpoint_period", type=int, default=1)
     parser = TrainableTransformer.add_model_specific_args(parser)
     return parser

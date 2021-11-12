@@ -21,18 +21,23 @@ class Linear(nn.Linear):
 
     def forward(self, input: Tensor) -> Tensor:
         if self.weight_noise > 0 and self.training:
-            bias = self.bias if self.bias is None else self.bias + torch.randn_like(self.bias) * self.weight_noise
+            bias = (
+                self.bias
+                if self.bias is None
+                else self.bias + torch.randn_like(self.bias) * self.weight_noise
+            )
             weight = self.weight + torch.randn_like(self.weight) * self.weight_noise
             # weight = self.weight * torch.exp(torch.randn_like(self.weight) * self.weight_noise)
         else:
             bias = self.bias
             weight = self.weight
-            
+
         return F.linear(
             input,
             weight,
             bias,
         )
+
 
 class LayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
@@ -41,7 +46,11 @@ class LayerNorm(nn.LayerNorm):
 
     def forward(self, input: Tensor) -> Tensor:
         if self.weight_noise > 0 and self.training:
-            bias = self.bias if self.bias is None else self.bias + torch.randn_like(self.bias) * self.weight_noise
+            bias = (
+                self.bias
+                if self.bias is None
+                else self.bias + torch.randn_like(self.bias) * self.weight_noise
+            )
             weight = self.weight + torch.randn_like(self.weight) * self.weight_noise
             # weight = self.weight * torch.exp(torch.randn_like(self.weight) * self.weight_noise)
         else:
@@ -228,7 +237,6 @@ class DecoderBlock(nn.Module):
         )
         # a1 = self.self_attn_drop(a1)
         a1 = self.self_attn_norm(x + a1)
-
         a2 = self.ffn(a1)
         a2 = self.ffn_drop(a2)
         a2 = self.ffn_norm(a1 + a2)
