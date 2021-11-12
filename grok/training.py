@@ -2,7 +2,6 @@
 
 import argparse
 import copy
-from hashlib import new
 import json
 import logging
 import math
@@ -10,13 +9,11 @@ import os
 import sys
 import pickle
 from argparse import ArgumentParser, Namespace
-from functools import reduce
 from typing import Any, Dict, List, Optional, Tuple, Union
 import time
 
 import numpy as np
 import pytorch_lightning
-from pytorch_lightning.core.mixins import hparams_mixin
 import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule, Trainer
@@ -144,8 +141,8 @@ class TrainableTransformer(LightningModule):
             add_dmodel:(int) increase in the size of d_model.
             exp_method:(str) [duplicate | random | zero] Method used to initialize new parameter.
         """
-        new_d_model = self.d_model + add_dmodel
-        print(f"\nExpanding to size {new_d_model}")
+        new_d_model = self.transformer.d_model + add_dmodel
+        # print(f"\nExpanding to size {new_d_model}")
         self.log("d_model", new_d_model)
         teacher_model = self.transformer
         params1 = teacher_model.state_dict()
@@ -172,30 +169,32 @@ class TrainableTransformer(LightningModule):
                 new_shape = params2[k].shape
                 old_shape = params1[k].shape
                 w_ = params1[k].clone()
+                device = params1[k].get_device()
                 for dim in range(len(new_shape)):
                     # m is the size  to concat in dimension `dim``
                     m = new_shape[dim] - old_shape[dim]
                     if exp_method == "duplicate":
                         idx = torch.tensor(
                             np.random.choice(range(w_.shape[dim]), size=m, replace=True)
-                        )
-                        v_ = torch.index_select(w_, dim, idx)
-                        w_ = torch.cat((w_, v_), dim=dim)
+                        ).to("cpu")
+                        v_ = torch.index_select(w_.to("cpu"), dim, idx).to(device)
+                        w_ = w_.to(device)
+                        w_ = torch.cat((w_, v_), dim=dim).to(device)
 
                     elif exp_method == "random":
                         shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                        v_ = torch.randn(shape_of_exta)
-                        w_ = torch.cat((w_, v_), dim=dim)
+                        v_ = torch.randn(shape_of_exta).to(device)
+                        w_ = torch.cat((w_, v_), dim=dim).to(device)
 
                     elif exp_method == "zero":
                         m = new_shape[dim] - old_shape[dim]
                         shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                        v_ = torch.zeros(shape_of_exta)
-                        w_ = torch.cat((w_, v_), dim=dim)
+                        v_ = torch.zeros(shape_of_exta).to(device)
+                        w_ = torch.cat((w_, v_), dim=dim).to(device)
 
                 params_new.update({k: w_})
         student_model.load_state_dict(params_new)
-        self.transformer = student_model.float()
+        self.transformer = student_model.to(device).float()
 
     def prepare_data(self) -> None:
         """
@@ -741,21 +740,35 @@ class ExpandModelCallback(pytorch_lightning.callbacks.Callback):
         self.expand_size = expand_size
         self.expand_count = expand_count
         self.expand_method = expand_method
+        self.N = None
+        self.current_epoch = 0
 
     def on_epoch_end(
         self, trainer: pytorch_lightning.Trainer, pl_module: TrainableTransformer
     ):
-        N = int(trainer.max_epochs // (self.expand_count) + 1)
+        assert (
+            trainer.max_steps or trainer.max_epochs
+        ), "Please provide either max_step or max_epochs"
+
         current_epoch = pl_module.current_epoch
+
+        if self.current_epoch == current_epoch:
+            return
+        else:
+            self.current_epoch = current_epoch
+
+        if current_epoch == 1 and not self.N:
+            if trainer.max_steps:
+                # TODO: remove hack
+                total_epochs = 1e5 // pl_module.batches_per_epoch
+                self.N = int(total_epochs // (self.expand_count) + 1)
+                print(f"\nExpanding freq set to {self.N} epochs")
+            else:
+                self.N = int(trainer.max_epochs // (self.expand_count) + 1)
+                print(f"\nExpanding freq set to {self.N} epochs")
+
         self.log("d_model", pl_module.transformer.d_model)
-        if (
-            current_epoch > 0
-            and current_epoch
-            < min(
-                trainer.max_epochs * 0.05, 250
-            )  # don't expand model in last 5% of epochs
-            and current_epoch % N == 0
-        ):
+        if current_epoch > 0 and current_epoch % self.N == 0:
             pl_module.expand_model(self.expand_size, exp_method=self.expand_method)
 
 
