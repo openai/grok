@@ -1,8 +1,8 @@
 import logging
-import torch
-import numpy as np
 
+import numpy as np
 import scipy.optimize
+import torch
 
 
 def get_loss_and_grads(x, model, data_loader):

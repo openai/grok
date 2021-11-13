@@ -3,20 +3,21 @@
 import logging
 
 logging.basicConfig(level=logging.ERROR)
-import csv
 import copy
+import csv
 import os
-import grok
-import numpy as np
-import sys
 import subprocess
-import torch
-from torch.multiprocessing import Process
-from grok import trainer
-from tqdm import tqdm
+import sys
 from argparse import ArgumentParser
 from collections import Counter
 
+import numpy as np
+import torch
+from torch.multiprocessing import Process
+from tqdm import tqdm
+
+import grok
+from grok import trainer
 
 torch.multiprocessing.freeze_support()
 try:

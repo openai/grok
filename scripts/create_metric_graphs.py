@@ -4,23 +4,20 @@
 # Render metrics graphs
 
 import csv
+import glob
 import logging
 import os
-import glob
 import socket
 from argparse import ArgumentParser
-
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
 import torch
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from tqdm import tqdm
-
 from sklearn.manifold import TSNE
+from tqdm import tqdm
 
 import grok
 from grok.visualization import *
@@ -79,7 +76,6 @@ def create_loss_curves(
         "x": "log",
         "y": "linear",
     }
-
 
     arch = list(metric_data.keys())[0]
 
@@ -233,7 +229,6 @@ for operation in RUNS:
     ####
 
     ds_len, run = RUNS[operation]
-
 
     data = load_metric_data(f"{DATA_DIR}/{run}", epochs=epochs, load_partial_data=False)
 

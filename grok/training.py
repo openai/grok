@@ -2,15 +2,16 @@
 
 import argparse
 import copy
+import functools
 import json
 import logging
 import math
 import os
-import sys
 import pickle
+import sys
+import time
 from argparse import ArgumentParser, Namespace
 from typing import Any, Dict, List, Optional, Tuple, Union
-import time
 
 import numpy as np
 import pytorch_lightning
@@ -18,12 +19,12 @@ import torch
 import torch.nn.functional as F
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger, CSVLogger
+from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from torch import Tensor
 from torch.optim.lr_scheduler import LambdaLR
-from grok import transformer
 
 import grok.metrics as metrics
+from grok import transformer
 from grok.data import (
     DEFAULT_DATA_DIR,
     EOS_TOKEN,
@@ -31,8 +32,8 @@ from grok.data import (
     ArithmeticDataset,
     ArithmeticIterator,
 )
-from grok.transformer import Transformer
 from grok.measure import get_sharpness
+from grok.transformer import Transformer
 
 DEFAULT_LOG_DIR = "logs"
 
@@ -142,59 +143,90 @@ class TrainableTransformer(LightningModule):
             exp_method:(str) [duplicate | random | zero] Method used to initialize new parameter.
         """
         new_d_model = self.transformer.d_model + add_dmodel
-        # print(f"\nExpanding to size {new_d_model}")
+        print(f"\nExpanding to size {new_d_model}")
         self.log("d_model", new_d_model)
         teacher_model = self.transformer
-        params1 = teacher_model.state_dict()
+        device = next(teacher_model.parameters()).device
+
         student_model = type(teacher_model)(
             n_layers=teacher_model.n_layers,
             n_heads=teacher_model.n_heads,
             d_model=new_d_model,
         )
-        params2 = student_model.state_dict()
-
         assert exp_method in [
             "duplicate",
             "random",
             "zero",
         ], "Invalid expansion method."
-        params_new = {}
-        for k in params2:
-            if k == "self_attn_mask":
-                params_new.update({k: params2[k].clone()})
+        with torch.no_grad():
+            for (k1, _), (k2, _) in zip(
+                self.transformer.named_parameters(), student_model.named_parameters()
+            ):
+                assert k1 == k2
 
-            elif params2[k].shape == params1[k].shape:
-                params_new.update({k: params1[k].clone()})
-            else:
-                new_shape = params2[k].shape
-                old_shape = params1[k].shape
-                w_ = params1[k].clone()
-                device = params1[k].get_device()
-                for dim in range(len(new_shape)):
-                    # m is the size  to concat in dimension `dim``
-                    m = new_shape[dim] - old_shape[dim]
-                    if exp_method == "duplicate":
-                        idx = torch.tensor(
-                            np.random.choice(range(w_.shape[dim]), size=m, replace=True)
-                        ).to("cpu")
-                        v_ = torch.index_select(w_.to("cpu"), dim, idx).to(device)
-                        w_ = w_.to(device)
-                        w_ = torch.cat((w_, v_), dim=dim).to(device)
+                keys = k1.split(".")
+                param_old_parent = functools.reduce(
+                    getattr, [self.transformer, *keys[:-1]]
+                )
+                param_new_parent = functools.reduce(
+                    getattr, [student_model, *keys[:-1]]
+                )
+                if type(param_old_parent) == transformer.LayerNorm:
+                    setattr(param_old_parent, "normalized_shape", (new_d_model,))
+                param_name = keys[-1]
+                param_old = getattr(param_old_parent, param_name)
+                param_new = getattr(param_new_parent, param_name)
 
-                    elif exp_method == "random":
-                        shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                        v_ = torch.randn(shape_of_exta).to(device)
-                        w_ = torch.cat((w_, v_), dim=dim).to(device)
-
-                    elif exp_method == "zero":
+                if param_new.shape == param_old.shape:
+                    setattr(
+                        param_old_parent,
+                        param_name,
+                        torch.nn.parameter.Parameter(param_old.clone()),
+                    )
+                else:
+                    new_shape = param_new.shape
+                    old_shape = param_old.shape
+                    w_ = param_old.clone()
+                    for dim in range(len(new_shape)):
+                        # m is the size  to concat in dimension `dim``
                         m = new_shape[dim] - old_shape[dim]
-                        shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                        v_ = torch.zeros(shape_of_exta).to(device)
-                        w_ = torch.cat((w_, v_), dim=dim).to(device)
+                        if exp_method == "duplicate":
+                            idx = torch.tensor(
+                                np.random.choice(
+                                    range(w_.shape[dim]), size=m, replace=True
+                                )
+                            ).to(device)
+                            v_ = torch.index_select(w_, dim, idx)
+                            w_ = torch.cat((w_, v_), dim=dim)
 
-                params_new.update({k: w_})
-        student_model.load_state_dict(params_new)
-        self.transformer = student_model.to(device).float()
+                        elif exp_method == "random":
+                            shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
+                            v_ = torch.randn(shape_of_exta).to(device)
+                            w_ = torch.cat((w_, v_), dim=dim)
+
+                        elif exp_method == "zero":
+                            m = new_shape[dim] - old_shape[dim]
+                            shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
+                            v_ = torch.zeros(shape_of_exta).to(device)
+                            w_ = torch.cat((w_, v_), dim=dim)
+                    setattr(
+                        param_old_parent,
+                        param_name,
+                        torch.nn.parameter.Parameter(w_),
+                    )
+            b = getattr(self.transformer, "position_encoding")
+            setattr(
+                self.transformer,
+                "position_encoding",
+                torch.tensor(
+                    self.transformer._position_encoding(
+                        self.transformer.max_context_len, new_d_model
+                    ),
+                    dtype=b.dtype,
+                    device=b.device,
+                ),
+            )
+        print(self.transformer)
 
     def prepare_data(self) -> None:
         """
@@ -759,8 +791,8 @@ class ExpandModelCallback(pytorch_lightning.callbacks.Callback):
 
         if current_epoch == 1 and not self.N:
             if trainer.max_steps:
-                # TODO: remove hack
-                total_epochs = 1e5 // pl_module.batches_per_epoch
+                total_steps = min(1e5, trainer.max_steps)
+                total_epochs = total_steps // pl_module.batches_per_epoch
                 self.N = int(total_epochs // (self.expand_count) + 1)
                 print(f"\nExpanding freq set to {self.N} epochs")
             else:
@@ -825,11 +857,16 @@ def train(hparams: Namespace) -> None:
         "val_check_interval": 1,
         "profiler": False,
         # "checkpoint_callback": checkpointer,
-        "logger": logger,
+        # "logger": logger,
         "log_every_n_steps": 1,
         "flush_logs_every_n_steps": 1000,
     }
     # add expand_callback if expand size > 0
+    if hparams.log:
+        pass
+        # logger.watch(model)
+        # trainer_args.update({"logger": logger})
+
     if hparams.expand_size > 0:
         expand_callback = ExpandModelCallback(
             expand_size=hparams.expand_size,
@@ -959,7 +996,7 @@ def add_args(parser=None) -> Namespace:
     parser.add_argument("--expand_size", type=int, default=-1)
     parser.add_argument("--expand_count", type=int, default=8)
     parser.add_argument("--expand_method", type=str, default="duplicate")
-
+    parser.add_argument("--log", type=bool, default=True)
     # parser.add_argument("--checkpoint_period", type=int, default=1)
     parser = TrainableTransformer.add_model_specific_args(parser)
     return parser

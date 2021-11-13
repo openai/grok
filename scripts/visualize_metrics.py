@@ -11,13 +11,14 @@ from glob import glob
 from pprint import pprint
 
 import blobfile as bf
-import grok
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
 import torch
 import yaml
 from tqdm import tqdm
+
+import grok
 
 logger = logging.getLogger(__name__)
 

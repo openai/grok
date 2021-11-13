@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
-from grok.data import create_data_files, DEFAULT_DATA_DIR
 
+from grok.data import DEFAULT_DATA_DIR, create_data_files
 
 parser = ArgumentParser()
 parser.add_argument("-d", "--data_directory", type=str, default=DEFAULT_DATA_DIR)

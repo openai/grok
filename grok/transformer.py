@@ -1,17 +1,15 @@
 #!/usr/bin/env python
 from argparse import ArgumentParser, Namespace
-from typing import Tuple, List, Dict, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from numpy import cos, sin, sqrt
-from torch import tensor, Tensor
+from torch import Tensor, tensor
 from torch.optim.lr_scheduler import LambdaLR
-import pytorch_lightning as pl
-
-from argparse import ArgumentParser
 
 
 class Linear(nn.Linear):

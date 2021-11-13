@@ -1,9 +1,8 @@
 import csv
 import logging
-import os
 import math
+import os
 import socket
-
 from collections import defaultdict
 from copy import deepcopy
 
@@ -11,7 +10,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
 import torch
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
 

@@ -1,20 +1,17 @@
 import itertools
 import math
 import os
-import sys
 import random
-
-import torch
-from torch import Tensor, LongTensor
-import numpy as np
-from typing import Tuple, List, Dict, Any, Union, Optional
-from tqdm import tqdm
-
-from sympy.combinatorics.permutations import Permutation
-from mod import Mod
+import sys
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import blobfile as bf
-
+import numpy as np
+import torch
+from mod import Mod
+from sympy.combinatorics.permutations import Permutation
+from torch import LongTensor, Tensor
+from tqdm import tqdm
 
 VALID_OPERATORS = {
     "+": "addition",

@@ -3,28 +3,29 @@
 import logging
 
 logging.basicConfig(level=logging.ERROR)
-import csv
 import copy
+import csv
 import glob
 import os
-import grok
-import numpy as np
 import subprocess
-import torch
 import sys
-from torch.multiprocessing import Process
-from grok import trainer
-from tqdm import tqdm
 from argparse import ArgumentParser
 from collections import Counter
-from grok_runs import RUNS
+
+import numpy as np
+import torch
 from grok_metrics_lib import (
     DATA_DIR,
-    load_metric_data,
     get_metric_data,
+    load_metric_data,
     most_interesting,
 )
+from grok_runs import RUNS
+from torch.multiprocessing import Process
+from tqdm import tqdm
 
+import grok
+from grok import trainer
 
 # Make N_EPOCHS exponentially spaced sets of epochs from 1 to 10,000
 N_EPOCHS = 32
