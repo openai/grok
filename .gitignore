@@ -5,6 +5,7 @@ __pycache__/
 
 wandb/
 log/
+new_log/
 nbs/lightning_logs/
 lightning_logs
 # C extensions

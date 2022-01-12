@@ -22,6 +22,7 @@ from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 from torch import Tensor
 from torch.optim.lr_scheduler import LambdaLR
+from grok.knowledge_transfer import knowledge_transfer
 
 import grok.metrics as metrics
 from grok import transformer
@@ -91,7 +92,6 @@ class TrainableTransformer(LightningModule):
         parser.add_argument("--weight_noise", type=float, default=0.0)
         parser.add_argument("--non_linearity", type=str, default="relu")
         parser.add_argument("--max_context_len", type=int, default=50)
-
         parser.add_argument("--math_operator", type=str, default="+")
         parser.add_argument(
             "--operand_length",
@@ -99,7 +99,7 @@ class TrainableTransformer(LightningModule):
             help="for list operations, the length of the lists",
         )
 
-        parser.add_argument("--train_data_pct", type=float, default=50)
+        parser.add_argument("--train_data_pct", type=float, default=5)
         parser.add_argument("--warmup_steps", type=int, default=10)
         parser.add_argument("--anneal_lr_steps", type=int, default=100000)
         parser.add_argument("--anneal_lr", dest="anneal_lr", action="store_true")
@@ -129,104 +129,6 @@ class TrainableTransformer(LightningModule):
         )
 
         return parser
-
-    def expand_model(
-        self,
-        add_dmodel: int,
-        exp_method: str = "random",
-    ) -> None:
-        """Expand Transformer dmodel to dmodel + add_dmodel.
-
-        Args:
-            parent_net:(grok.transformer.Transformer) The parent model to expand from.
-            add_dmodel:(int) increase in the size of d_model.
-            exp_method:(str) [duplicate | random | zero] Method used to initialize new parameter.
-        """
-        new_d_model = self.transformer.d_model + add_dmodel
-        print(f"\nExpanding to size {new_d_model}")
-        self.log("d_model", new_d_model)
-        teacher_model = self.transformer
-        device = next(teacher_model.parameters()).device
-
-        student_model = type(teacher_model)(
-            n_layers=teacher_model.n_layers,
-            n_heads=teacher_model.n_heads,
-            d_model=new_d_model,
-        )
-        assert exp_method in [
-            "duplicate",
-            "random",
-            "zero",
-        ], "Invalid expansion method."
-        with torch.no_grad():
-            for (k1, _), (k2, _) in zip(
-                self.transformer.named_parameters(), student_model.named_parameters()
-            ):
-                assert k1 == k2
-
-                keys = k1.split(".")
-                param_old_parent = functools.reduce(
-                    getattr, [self.transformer, *keys[:-1]]
-                )
-                param_new_parent = functools.reduce(
-                    getattr, [student_model, *keys[:-1]]
-                )
-                if type(param_old_parent) == transformer.LayerNorm:
-                    setattr(param_old_parent, "normalized_shape", (new_d_model,))
-                param_name = keys[-1]
-                param_old = getattr(param_old_parent, param_name)
-                param_new = getattr(param_new_parent, param_name)
-
-                if param_new.shape == param_old.shape:
-                    setattr(
-                        param_old_parent,
-                        param_name,
-                        torch.nn.parameter.Parameter(param_old.clone()),
-                    )
-                else:
-                    new_shape = param_new.shape
-                    old_shape = param_old.shape
-                    w_ = param_old.clone()
-                    for dim in range(len(new_shape)):
-                        # m is the size  to concat in dimension `dim``
-                        m = new_shape[dim] - old_shape[dim]
-                        if exp_method == "duplicate":
-                            idx = torch.tensor(
-                                np.random.choice(
-                                    range(w_.shape[dim]), size=m, replace=True
-                                )
-                            ).to(device)
-                            v_ = torch.index_select(w_, dim, idx)
-                            w_ = torch.cat((w_, v_), dim=dim)
-
-                        elif exp_method == "random":
-                            shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                            v_ = torch.randn(shape_of_exta).to(device)
-                            w_ = torch.cat((w_, v_), dim=dim)
-
-                        elif exp_method == "zero":
-                            m = new_shape[dim] - old_shape[dim]
-                            shape_of_exta = w_.shape[:dim] + (m,) + w_.shape[dim + 1 :]
-                            v_ = torch.zeros(shape_of_exta).to(device)
-                            w_ = torch.cat((w_, v_), dim=dim)
-                    setattr(
-                        param_old_parent,
-                        param_name,
-                        torch.nn.parameter.Parameter(w_),
-                    )
-            b = getattr(self.transformer, "position_encoding")
-            setattr(
-                self.transformer,
-                "position_encoding",
-                torch.tensor(
-                    self.transformer._position_encoding(
-                        self.transformer.max_context_len, new_d_model
-                    ),
-                    dtype=b.dtype,
-                    device=b.device,
-                ),
-            )
-        print(self.transformer)
 
     def prepare_data(self) -> None:
         """
@@ -766,44 +668,6 @@ class TrainableTransformer(LightningModule):
         return self.transformer(*args, **kwargs)
 
 
-class ExpandModelCallback(pytorch_lightning.callbacks.Callback):
-    def __init__(self, expand_size: int, expand_count: float, expand_method: str):
-        super().__init__()
-        self.expand_size = expand_size
-        self.expand_count = expand_count
-        self.expand_method = expand_method
-        self.N = None
-        self.current_epoch = 0
-
-    def on_epoch_end(
-        self, trainer: pytorch_lightning.Trainer, pl_module: TrainableTransformer
-    ):
-        assert (
-            trainer.max_steps or trainer.max_epochs
-        ), "Please provide either max_step or max_epochs"
-
-        current_epoch = pl_module.current_epoch
-
-        if self.current_epoch == current_epoch:
-            return
-        else:
-            self.current_epoch = current_epoch
-
-        if current_epoch == 1 and not self.N:
-            if trainer.max_steps:
-                total_steps = min(1e5, trainer.max_steps)
-                total_epochs = total_steps // pl_module.batches_per_epoch
-                self.N = int(total_epochs // (self.expand_count) + 1)
-                print(f"\nExpanding freq set to {self.N} epochs")
-            else:
-                self.N = int(trainer.max_epochs // (self.expand_count) + 1)
-                print(f"\nExpanding freq set to {self.N} epochs")
-
-        self.log("d_model", pl_module.transformer.d_model)
-        if current_epoch > 0 and current_epoch % self.N == 0:
-            pl_module.expand_model(self.expand_size, exp_method=self.expand_method)
-
-
 def train(hparams: Namespace) -> None:
     """
     This is the main trainer_method. This sets up and runs experiment with
@@ -839,10 +703,20 @@ def train(hparams: Namespace) -> None:
 
     # Create the model
     model = TrainableTransformer(hparams).float()
-
-    torch.save(model, os.path.join(checkpoint_path, "init.pt"))
+    if hparams.load_path:
+        knowledge_transfer(model, hparams.load_path)
+    print(model.state_dict())
+    path = os.path.join(
+        checkpoint_path,
+        f"init_{hparams.d_model}_{hparams.n_heads}_{hparams.n_layers}.pt",
+    )
+    print(f"Saving model to {path}")
+    torch.save(
+        model,
+        path,
+    )
     # logger = CSVLogger(hparams.logdir)
-    logger = WandbLogger(project="grok", config=hparams.__dict__)
+    logger = WandbLogger(project="grok_log", config=hparams.__dict__)
     # checkpointer = ModelCheckpoint(
     #     filepath=checkpoint_path,
     #     monitor="save_ckpt",
@@ -863,17 +737,8 @@ def train(hparams: Namespace) -> None:
     }
     # add expand_callback if expand size > 0
     if hparams.log:
-        pass
-        # logger.watch(model)
-        # trainer_args.update({"logger": logger})
-
-    if hparams.expand_size > 0:
-        expand_callback = ExpandModelCallback(
-            expand_size=hparams.expand_size,
-            expand_count=hparams.expand_count,
-            expand_method=hparams.expand_method,
-        )
-        trainer_args.update({"callbacks": [expand_callback]})
+        logger.watch(model)
+        trainer_args.update({"logger": logger})
 
     if torch.cuda.is_available() and hparams.gpu >= 0:
         trainer_args["gpus"] = [hparams.gpu]
@@ -881,6 +746,14 @@ def train(hparams: Namespace) -> None:
     trainer = Trainer(**trainer_args)
 
     trainer.fit(model=model)  # type: ignore
+    torch.save(
+        model,
+        os.path.join(
+            checkpoint_path,
+            f"final_{hparams.d_model}_{hparams.n_heads}_{hparams.n_layers}.pt",
+        ),
+    )
+
     """
     margin = np.percentile(model.margin.detach().cpu().numpy(), 5)
     device = transformer.embedding.weight.device
@@ -992,11 +865,9 @@ def add_args(parser=None) -> Namespace:
     parser.add_argument("--random_seed", type=int, default=-1)
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--max_epochs", type=int, default=None)
-    parser.add_argument("--max_steps", type=int, default=1000000)
-    parser.add_argument("--expand_size", type=int, default=-1)
-    parser.add_argument("--expand_count", type=int, default=8)
-    parser.add_argument("--expand_method", type=str, default="duplicate")
-    parser.add_argument("--log", type=bool, default=True)
+    parser.add_argument("--max_steps", type=int, default=100)
+    parser.add_argument("--log", type=bool, default=False)
+    parser.add_argument("--load_path", type=str, default=None)
     # parser.add_argument("--checkpoint_period", type=int, default=1)
     parser = TrainableTransformer.add_model_specific_args(parser)
     return parser
