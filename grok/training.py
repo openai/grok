@@ -47,7 +47,7 @@ class TrainableTransformer(LightningModule):
                         self.add_model_specific_args().
         """
         super().__init__()
-        self.hparams = hparams  # type: ignore
+        self.hparams.update(vars(hparams))  # type: ignore
         self.prepare_data()
 
         self.transformer = Transformer(
