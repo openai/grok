@@ -103,7 +103,7 @@ def load_run_metrics(
     run_dir,
     args=args,
 ):
-    """load all the metrics for a collecton of experiemnts with the same architecture
+    """load all the metrics for a collection of experiments with the same architecture
     across various amounts of training data"""
     metric_data = {}
     from os import walk
