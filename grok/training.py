@@ -42,13 +42,19 @@ class TrainableTransformer(LightningModule):
     """
 
     def __init__(self, hparams: Namespace) -> None:
-        """
-        :param hparams: An argparse.Namespace with parameters defined in
-                        self.add_model_specific_args().
-        """
         super().__init__()
-        self.hparams = hparams  # type: ignore
+        # Save hyperparameters
+        self.save_hyperparameters(hparams)
+
+        # Now self.hparams is automatically populated with the contents of hparams
+        # and you can access individual hyperparameters as attributes, e.g., self.hparams.n_layers
+
         self.prepare_data()
+        self.training_step_outputs = []
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
+
+
 
         self.transformer = Transformer(
             hparams.n_layers,
@@ -458,17 +464,22 @@ class TrainableTransformer(LightningModule):
             "loss": loss,
             "partial_train_loss": coeff * loss,
             "partial_train_accuracy": coeff * accuracy,
-            "learning_rate": torch.tensor([lr]),
+            #"learning_rate": torch.tensor([lr]),
+            "learning_rate": lr,
             "y_hat_rhs": y_hat_rhs,
             "partial_attentions": attentions,
             "partial_values": values,
         }
         if self.current_epoch == 0:
             output["x_lhs"] = x_lhs
+        self.training_step_outputs.append(output)
+        #return output
+        return loss
 
-        return output
-
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self, outputs):
+        if len(self.training_step_outputs) == 0:
+            # Nothing to do if no outputs were collected
+            return
         """
         Used by pytorch_lightning
         Accumulates results of all forward training passes in this epoch
@@ -478,6 +489,7 @@ class TrainableTransformer(LightningModule):
         :returns: a dict with loss, accuracy, lr, probabilities of solutions,
                   attentions, and values
         """
+
         epoch_is_to_be_logged = self.current_epoch == self.next_train_epoch_to_log
         if epoch_is_to_be_logged:
             self.next_train_epoch_to_log = max(
@@ -485,25 +497,22 @@ class TrainableTransformer(LightningModule):
                 self.next_train_epoch_to_log + 1,
             )
             with torch.no_grad():
-                try:
-                    loss = torch.stack([x["partial_train_loss"] for x in outputs]).sum()
-                except Exception as e:
-                    print("!" * 80)
-                    print(outputs)
-                    raise e
+                loss = torch.stack([x["partial_train_loss"] for x in self.training_step_outputs]).sum()
+                accuracy = torch.stack([x["partial_train_accuracy"] for x in self.training_step_outputs]).sum()
                 perplexity = torch.exp(loss)
-                accuracy = torch.stack(
-                    [x["partial_train_accuracy"] for x in outputs]
-                ).sum()
+                first_lr = self.training_step_outputs[0]["learning_rate"]
+
             # avg_lr = torch.stack([x["learning_rate"] for x in outputs]).mean()
             # max_lr = torch.stack([x["learning_rate"] for x in outputs]).max()
             # last_lr = outputs[-1]["learning_rate"]
-            first_lr = outputs[0]["learning_rate"]
+            #first_lr = outputs[0]["learning_rate"]
 
             if self.hparams.save_activations or self.hparams.save_outputs:
                 if self.current_epoch == 0:
                     self._save_inputs(outputs, ds="train")
                 self._save_activations(outputs, ds="train")
+                self._save_inputs(self.training_step_outputs, ds="train")
+                self._save_activations(self.training_step_outputs, ds="train")
 
             logs = {
                 "train_loss": loss,
@@ -518,6 +527,8 @@ class TrainableTransformer(LightningModule):
             }
             for k, v in logs.items():
                 self.log(k, v)
+        self.training_step_outputs.clear()
+
 
     def validation_step(self, batch, batch_idx):
         """
@@ -547,71 +558,67 @@ class TrainableTransformer(LightningModule):
         if self.current_epoch == 0:
             output["x_lhs"] = x_lhs
 
+        self.validation_step_outputs.append(output)
         return output
 
-    def validation_epoch_end(self, outputs):
-        """
-        Used by pytorch_lightning
-        Accumulates results of all forward validation passes in this epoch
+    def on_validation_epoch_end(self):
+        # Skip if no outputs
+        if len(self.validation_step_outputs) == 0:
+            return
 
-        :param outputs: a list of dicts from self.validation_step()
-        :param batch_idx: which batch this is in the epoch.
-        :returns: a dict with val_loss, val_accuracy
-        """
-        validation_is_real = len(outputs[0]) != 0
-
+        validation_is_real = len(self.validation_step_outputs[0]) != 0
         if validation_is_real:
             self.next_epoch_to_eval = max(
                 int(1.02 * self.next_epoch_to_eval), self.next_epoch_to_eval + 1
             )
 
-            loss = torch.stack([x["partial_val_loss"] for x in outputs]).sum()
-            perplexity = torch.exp(loss)
-            accuracy = torch.stack([x["partial_val_accuracy"] for x in outputs]).sum()
+            with torch.no_grad():
+                loss = torch.stack([x["partial_val_loss"] for x in self.validation_step_outputs]).sum()
+                accuracy = torch.stack([x["partial_val_accuracy"] for x in self.validation_step_outputs]).sum()
+                perplexity = torch.exp(loss)
 
+            # Only use self.validation_step_outputs since 'outputs' is undefined in this context
             if self.hparams.save_activations or self.hparams.save_outputs:
+                # Removed the incorrect references to 'outputs'
                 if self.current_epoch == 0:
-                    self._save_inputs(outputs, ds="val")
-                self._save_activations(outputs, ds="val")
+                    self._save_inputs(self.validation_step_outputs, ds="val")
+                self._save_activations(self.validation_step_outputs, ds="val")
 
             logs = {
                 "val_loss": loss,
                 "val_accuracy": accuracy,
                 "val_perplexity": perplexity,
             }
-            for name, param in self.named_parameters():
-                # n parameters
-                n_params = param.numel()
-                # get the l2 norm of the parameter
-                logs["paramnorm_" + name] = torch.norm(
-                    param, 2
-                ).detach().cpu().numpy() / np.sqrt(n_params)
 
-            # train accuracy
+            # Additional logging
+            for name, param in self.named_parameters():
+                n_params = param.numel()
+                logs["paramnorm_" + name] = torch.norm(param, 2).detach().cpu().numpy() / np.sqrt(n_params)
+
+            # Train accuracy (consider if this step is necessary for every validation epoch end)
             device = self.transformer.embedding.weight.device
             train_data = self.train_dataset.data.to(device)
             training_data = {"text": train_data[:, :-1], "target": train_data[:, 1:]}
-            with torch.no_grad():
-                tr_loss, tr_acc, *_ = self._step(training_data, 0)
-                logs["full_train_loss"] = tr_loss
-                logs["full_train_acc"] = tr_acc
+            tr_loss, tr_acc, *_ = self._step(training_data, 0, train=False)
+            logs["full_train_loss"] = tr_loss
+            logs["full_train_acc"] = tr_acc
 
             for k, v in logs.items():
                 self.log(k, v)
-        # save a checkpoint if the epoch is a power of 2
-        if (
-            self.current_epoch > 0
-            and int(2 ** (int(np.log(self.current_epoch) / np.log(2))))
-            == self.current_epoch
-        ):
+
+            self.validation_step_outputs.clear()
+
+        # Consider moving checkpoint saving to a more appropriate place if not specific to validation logic
+        if self.current_epoch > 0 and int(2 ** (int(np.log(self.current_epoch) / np.log(2)))) == self.current_epoch:
             self.trainer.save_checkpoint(
                 os.path.join(
                     self.hparams.checkpoint_path,
                     "epoch_" + str(self.current_epoch) + ".ckpt",
                 )
             )
-        if validation_is_real:
-            return logs
+
+        
+
 
     def test_step(self, batch, batch_idx):
         """
@@ -636,30 +643,30 @@ class TrainableTransformer(LightningModule):
         }
         if self.current_epoch == 0:
             output["x_lhs"] = x_lhs
-
+        self.test_step_outputs.append(output)
         return output
 
-    def test_epoch_end(self, outputs):
-        """
-        Used by pytorch_lightning
-        Accumulates results of all forward validation passes in this epoch
+    def on_test_epoch_end(self):
+        if len(self.test_step_outputs) == 0:
+            return  # Skip if no outputs were collected
 
-        :param outputs: a list of dicts from self.validation_step()
-        :param batch_idx: which batch this is in the epoch.
-        :returns: a dict with val_loss, val_accuracy
-        """
-        loss = torch.cat([x["partial_test_loss"] for x in outputs], dim=0)  # .sum()
-        # loss = list([x["partial_test_loss"] for x in outputs])  # .sum()
-        perplexity = torch.exp(loss)
-        accuracy = torch.cat([x["partial_test_accuracy"] for x in outputs], dim=0)
+        with torch.no_grad():
+            loss = torch.stack([x["partial_test_loss"] for x in self.test_step_outputs]).sum()
+            accuracy = torch.stack([x["partial_test_accuracy"] for x in self.test_step_outputs]).mean()
+            perplexity = torch.exp(loss / len(self.test_step_outputs))  # Average loss before exp for perplexity
 
         logs = {
             "test_loss": loss,
             "test_accuracy": accuracy,
             "test_perplexity": perplexity,
         }
+        
+        # Logging the metrics
+        for key, value in logs.items():
+            self.log(key, value)
 
-        return {"test_loss": loss, "log": logs}
+        # Clear the list to free memory
+        self.test_step_outputs.clear()
 
     def forward(self, *args, **kwargs) -> Any:
         """Passes all arguments directly to Tranformer.forward()"""
@@ -723,7 +730,7 @@ def train(hparams: Namespace) -> None:
         # "checkpoint_callback": checkpointer,
         "logger": logger,
         "log_every_n_steps": 1,
-        "flush_logs_every_n_steps": 1000,
+        #"flush_logs_every_n_steps": 1000,
     }
     if torch.cuda.is_available() and hparams.gpu >= 0:
         trainer_args["gpus"] = [hparams.gpu]
