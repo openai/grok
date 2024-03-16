@@ -1,5 +1,5 @@
 
-# Grok
+# OpenAI Grok Curve Experiments
 
 Grok is an innovative machine learning toolkit designed to enhance the efficiency and effectiveness of model training and evaluation. By providing advanced tools for data processing, performance measurement, and result visualization, Grok simplifies the complexities involved in developing and fine-tuning machine learning models.
 
