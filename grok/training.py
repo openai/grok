@@ -47,7 +47,8 @@ class TrainableTransformer(LightningModule):
                         self.add_model_specific_args().
         """
         super().__init__()
-        self.hparams = hparams  # type: ignore
+        # self.hparams = hparams  # type: ignore
+        self.save_hyperparameters(hparams)
         self.prepare_data()
 
         self.transformer = Transformer(
@@ -450,10 +451,12 @@ class TrainableTransformer(LightningModule):
         )
         self.fwd_time_in_epoch += time.time() - start
 
-        schedulers = self.trainer.lr_schedulers[0]
+        # schedulers = self.trainer.lr_schedulers[0]
+        schedulers = self.lr_schedulers()
         if self.current_epoch != self.next_train_epoch_to_log:
             return {"loss": loss}
-        lr = schedulers["scheduler"].optimizer.param_groups[0]["lr"]
+        # lr = schedulers["scheduler"].optimizer.param_groups[0]["lr"]
+        lr = schedulers.optimizer.param_groups[0]["lr"]
         output = {
             "loss": loss,
             "partial_train_loss": coeff * loss,
@@ -585,7 +588,8 @@ class TrainableTransformer(LightningModule):
                 # get the l2 norm of the parameter
                 logs["paramnorm_" + name] = torch.norm(
                     param, 2
-                ).detach().cpu().numpy() / np.sqrt(n_params)
+                #jomod ).detach().cpu().numpy() / np.sqrt(n_params)
+                ).detach().cpu().numpy().astype(np.float32) / np.sqrt(n_params,dtype=np.float32)
 
             # train accuracy
             device = self.transformer.embedding.weight.device
@@ -718,15 +722,19 @@ def train(hparams: Namespace) -> None:
         "max_steps": hparams.max_steps,
         "min_steps": hparams.max_steps,
         "max_epochs": int(1e8),
-        "val_check_interval": 1,
+        "val_check_interval": 1.0, # changed from 1
         "profiler": False,
         # "checkpoint_callback": checkpointer,
         "logger": logger,
         "log_every_n_steps": 1,
-        "flush_logs_every_n_steps": 1000,
+        # "flush_logs_every_n_steps": 1000,
     }
     if torch.cuda.is_available() and hparams.gpu >= 0:
         trainer_args["gpus"] = [hparams.gpu]
+
+    if torch.backends.mps.is_available() and hparams.gpu >= 0:
+        trainer_args["accelerator"] = 'mps'
+        trainer_args["devices"] = 1
 
     trainer = Trainer(**trainer_args)
 

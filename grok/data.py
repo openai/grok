@@ -451,6 +451,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
         """
         :returns: this iterator
         """
+        self.reset_iteration() #
         return self
 
     def __next__(self) -> Dict[str, Tensor]:
@@ -463,7 +464,7 @@ class ArithmeticIterator(torch.utils.data.IterableDataset):
 
         batch_begin = self.index * self.batchsize
         if batch_begin > len(self.dataset) - 1:
-            self.reset_iteration()
+            #self.reset_iteration()
             raise StopIteration
         indices = self.permutation[batch_begin : batch_begin + self.batchsize]
         text = self.dataset.data[indices, :-1]
